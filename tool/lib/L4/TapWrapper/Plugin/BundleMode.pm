@@ -9,7 +9,7 @@ use L4::TapWrapper;
 sub new {
   my $self = L4::TapWrapper::Plugin->new();
   $self->{block_count} = 0;         # How many block starts we have seen
-  $self->{block_count_expect} = -1; # Default that will indicate failure
+  $self->{block_count_expect} = undef; # Default that will indicate failure
   $self->{BundleControl} = "TAPOutput";
   return bless $self, shift;
 }
@@ -41,8 +41,18 @@ sub check_end {
 sub process_mine {
   my $self = shift;
   my $line = shift;
-  if ($line =~ /BUNDLE TEST EXPECT TEST COUNT (\d+)/)
+
+  if ($line =~ m/BUNDLE TEST START/)
     {
+      L4::TapWrapper::fail_test("Saw BUNDLE TEST START twice. " .
+                                "Nested BUNDLE tests not supported.");
+    }
+  elsif ($line =~ /BUNDLE TEST EXPECT TEST COUNT (\d+)/)
+    {
+      L4::TapWrapper::fail_test("BUNDLE TEST EXPECT TEST COUNT " .
+                                "must only occur once.")
+        if defined $self->{block_count_expect};
+
       $self->{block_count_expect} = 0 + $1;
     }
   else
@@ -84,11 +94,20 @@ sub finalize {
   my $self = shift;
   return unless defined($self->{have_bundle});
   $self->add_raw_tap_line("1..1\n");
-  $self->add_tap_line($self->{block_count_expect} == $self->{block_count},
-                      "BUNDLE: Expected $self->{block_count_expect} TAP TEST blocks, found $self->{block_count}");
+
+  $self->add_tap_line(defined($self->{block_count_expect})
+                      && $self->{block_count_expect} == $self->{block_count},
+                      "BUNDLE: Expected block count - " .
+                      $L4::TapWrapper::test_description);
+
   # Satisfy requirement for a uuid on every ok line, but don't use a real
   # looking UUID because this ok line doesn't really test anything substantial.
   $self->add_raw_tap_line("#  Test-uuid: 00000000-0000-0000-0000-000000000000\n");
+
+  $self->add_raw_tap_line("#  Expected block count = " .
+                          ($self->{block_count_expect} // "<unspecified>") . "\n");
+  $self->add_raw_tap_line("#  Found block count = " .
+                          ($self->{block_count}) . "\n");
 
   return $self->SUPER::finalize();
 }
