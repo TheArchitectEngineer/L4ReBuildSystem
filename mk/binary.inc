@@ -672,7 +672,6 @@ ifneq ($(MODE),host)
 ADACFLAGS += -nostdinc -I$(OBJ_BASE)/include/contrib/ada/adainclude/
 ADACFLAGS += --RTS=$(OBJ_BASE)/include/contrib/ada
 endif
-NO_CPP_ADAC = y
 
 NOPICFLAGS += $(if $(CONFIG_BID_PIE),-fPIE)
 PICFLAGS += -fPIC -U__PIC__ -D__PIC__=1
@@ -686,10 +685,10 @@ NOPIEFLAGS_all_$(MODE)     ?= $(NOPIEFLAGS)
 NOPIEFLAGS_$(ARCH)_$(MODE) ?= $(NOPIEFLAGS_all_$(MODE))
 
 ifneq ($(MODE),host)
-ASFLAGS_L4_GENERIC += $(CARCHFLAGS) $(CCXX_FLAGS)
+ASFLAGS_L4_GENERIC += $(CARCHFLAGS)
 endif
 
-ASFLAGS += $(OPTS) $(ASFLAGS_L4_GENERIC)
+ASFLAGS += $(ASFLAGS_L4_GENERIC)
 ASFLAGS += $(call bid_flag_variants,ASFLAGS)
 
 ALLOBJS  = $(OBJS) $(foreach target,$(TARGET) $(TARGET_$(OSYSTEM)),\
@@ -895,7 +894,6 @@ relink: all
 endif
 
 DEPFLAGS   = -MD -MP -MF $(@D)/.$(@F).d
-DEPFLAGS_F = -cpp
 
 include $(L4DIR)/mk/rules.inc
 

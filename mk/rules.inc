@@ -24,33 +24,6 @@ BID_AS_COMPILER_INT_NAME = INT_CPP_NAME
 BID_ADAC_COMPILER = ADAC
 BID_ADAC_COMPILER_INT_NAME = INT_ADAC_NAME
 
-
-# Template for our make rules.
-# arg1: the target or target pattern (e.g., %.o)
-# arg2: the prerequisites (e.g., %.c)
-# arg3: the compiler pattern, used for determining the compiler
-#       variables and default flags (e.g., CXX). The rule uses
-#       $($(BID_<arg3>_COMPILER)) as compiler,
-#       $($(BID_<arg3>_COMPILER_INT_NAME)) for gendep, and
-#       $(<arg3>FLAGS) as flags
-# arg4: extra command line flags for the compile
-#
-# The check for BID_OBJ_SRC_$@ ensures that we only compile files within our
-# current set of source files. Due to dependency tracking it might happen
-# that a .d file contains a dependency to a .o file that is not in our
-# current set of files to compile (it might not work due to config changes).
-define BID_MAKE_RULE_template_gendep
-$(1): $(2) $(GENERAL_D_LOC)
-	@$$(COMP_MESSAGE)
-	$$(VERBOSE)$$(call lessfork_mkdir,$$(@D))
-	$$(VERBOSE)$$(if $$(BID_OBJ_SRC_$$@),$$(call \
-	  MAKEDEP,$$($(BID_$(3)_COMPILER_INT_NAME))) $$($(BID_$(3)_COMPILER)) \
-	  -c $$(DEPEND_FLAG) $$(CPPFLAGS) $$($(3)FLAGS_EARLY) $$($(3)FLAGS) $(4) $$< \
-	  -o $$@)
-	$$(DEPEND_VERBOSE)$$(if $$(BID_OBJ_SRC_$$@),$$(call \
-	  DEPEND_EXTEND_FUNC, $$(*F).d, $$(dir $$@).$$(notdir $$@).d))
-endef
-
 prereqs_changed = $(filter-out FORCE .general.d,$?)
 
 escape_cmd = $(subst $$,$$$$,$(subst $(BID_POUND),\$(BID_POUND),$(subst $(BID_SQUOTE),'\$(BID_SQUOTE)',$1)))
@@ -81,18 +54,27 @@ define BID_call_compiler_plain
   $(call verbcmd,$(call COMP_MESSAGE);,$(call lessfork_mkdir,$(@D)) $1)
 endef
 
-define _asm_has_cpp
-  $(filter $(addprefix %,$(BID_ASM_CPP_FILE_EXTENSIONS)),$1)
-endef
+_asm_has_cpp=$(filter $(addprefix %,$(BID_ASM_CPP_FILE_EXTENSIONS)),$1)
 
 BID_call_compiler_F    = $(BID_call_compiler_plain)
 BID_call_compiler_ADAC = $(BID_call_compiler_plain)
-BID_call_compiler_AS   = $(if $(call _asm_has_cpp,$<),     \
-                              $(BID_call_compiler_default),\
-                              $(BID_call_compiler_plain))
+BID_call_compiler_AS   = $(BID_call_compiler_$(if $(call _asm_has_cpp,$<),default,plain))
 
-# Arg and further descriptions: See BID_MAKE_RULE_template_gendep
+# Template for our make rules.
+# arg1: the target or target pattern (e.g., %.o)
+# arg2: the prerequisites (e.g., %.c)
+# arg3: the compiler pattern, used for determining the compiler
+#       variables and default flags (e.g., CXX). The rule uses
+#       $($(BID_<arg3>_COMPILER)) as compiler,
+#       $($(BID_<arg3>_COMPILER_INT_NAME)) for gendep, and
+#       $(<arg3>FLAGS) as flags
+# arg4: extra command line flags for the compile
 #
+# The check for BID_OBJ_SRC_$@ ensures that we only compile files within our
+# current set of source files. Due to dependency tracking it might happen
+# that a .d file contains a dependency to a .o file that is not in our
+# current set of files to compile (it might not work due to config changes).
+
 # BID_call_compiler_default works only for gcc/clang as gfortran generates
 # different deps file that fixdep cannot process. For this reason we compile
 # Fortran the traditional way of depending on $(GENERAL_D_LOC).
@@ -100,20 +82,21 @@ BID_call_compiler_AS   = $(if $(call _asm_has_cpp,$<),     \
 # Template for our make rules (make rules that do not use gendep)
 # The $\ statement after the $(if ...) statement must be kept to omit a space
 # prior to the BID_$(3)_COMPILER statement.
-define BID_MAKE_RULE_template_nongendep
+define BID_MAKE_RULE_template_generic
 $1: $2 $(if $(BID_call_compiler_$3),$(GENERAL_D_LOC),FORCE)
 	$$(if $$(BID_OBJ_SRC_$$@),$\
-	      $$(call $(if $(BID_call_compiler_$3),BID_call_compiler_$3,\
-	                                           BID_call_compiler_default),$\
-	              $$($(BID_$(3)_COMPILER)) \
-	              -c $(if $(filter y Y 1,$(NO_CPP_$(3))),,$$(strip \
-	                      $$(DEPFLAGS) $$(DEPFLAGS_$(3)) $$(CPPFLAGS))) \
-	              $$($(3)FLAGS_EARLY) $$($(3)FLAGS) $(4) $$< -o $$@ \
+	      $$(call BID_call_compiler_$(if $(BID_call_compiler_$3),$3,default),$\
+	              $$($(BID_$(3)_COMPILER)) -c $(4) $$< -o $$@ \
 	              $$($(3)_COLLECT_REDIR)))
 endef
 
-# which template rule do we really use
-BID_MAKE_RULE_template = $(BID_MAKE_RULE_template_nongendep)
+define BID_MAKE_RULE_template_nocpp
+  $(call BID_MAKE_RULE_template_generic,$(1),$(2),$(3),$$($(3)FLAGS_EARLY) $$($(3)FLAGS) $(4))
+endef
+
+define BID_MAKE_RULE_template
+  $(call BID_MAKE_RULE_template_generic,$(1),$(2),$(3),$$(DEPFLAGS) $$(CPPFLAGS) $$($(3)FLAGS_EARLY) $$($(3)FLAGS) $(4))
+endef
 
 #
 # Generate the default set of make rules.
@@ -152,7 +135,7 @@ endef
 # targets: %.o, %.s.o, %.pr.o, and %.pr.s.o
 #
 define BID_GENERATE_F_MAKE_RULES
-  $(call BID_GENERATE_DEFAULT_MAKE_RULES,%,%.$(1),F)
+  $(call BID_GENERATE_DEFAULT_MAKE_RULES,%,%.$(1),F,-cpp)
 endef
 
 #
@@ -160,17 +143,20 @@ endef
 # prerequisites: %.<arg1> (usually %.adb or %.ads)
 # targets: %.o
 define BID_GENERATE_ADA_MAKE_RULES
-  $(call BID_MAKE_RULE_template,%.o %.i,%.$(1),ADAC)
+  $(call BID_MAKE_RULE_template_nocpp,%.o %.i,%.$(1),ADAC)
 endef
 
 #
 # Generate the ASM set of make rules.
+# Without cpp all variants are the same (and in fact contain the same code)
 # prerequisites: %.<arg1> (usually %.S)
 # targets: %.o, %.s.o, %.pr.o, and %.pr.s.o
 #
 define BID_GENERATE_ASM_MAKE_RULES
-  $(call BID_GENERATE_DEFAULT_MAKE_RULES,%$(BID_S_INFIX),%.$(1),AS,$(if \
-    $(filter .$(1),$(BID_ASM_CPP_FILE_EXTENSIONS)),-x assembler-with-cpp,))
+  $(if $(filter .$(1),$(BID_ASM_CPP_FILE_EXTENSIONS)),
+    $(call BID_GENERATE_DEFAULT_MAKE_RULES,%,%.$(1),AS,-x assembler-with-cpp),
+    $(foreach type,o s.o pr.o pr.s.o,
+      $(call BID_MAKE_RULE_template_nocpp,%.$(type),%.$(1),AS)))
 endef
 
 #
