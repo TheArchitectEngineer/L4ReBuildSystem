@@ -323,7 +323,7 @@ cleanup_include_dir:
 
 # Build a typical sysroot for use with external tooling such as a
 # L4Re-specific cross-compiler
-SYSROOT_LIB_DIRS  = $(addprefix libc/uclibc-ng/,libc libm librt) \
+SYSROOT_LIB_DIRS  = $(addprefix libc/$(CONFIG_L4_LIBC)/,libc libm librt) \
                     ldscripts ldso libgcc-crt libgcc_eh
 
 OUTPUT_FORMAT = $(CC) $(CFLAGS) -Wl,--verbose 2>&1 | $(SED) -n '/OUTPUT_FORMAT/,/)/p'
@@ -341,15 +341,15 @@ sysroot: $(SYSROOT_PACKAGES)
 	                    $(OBJ_DIR)/sysroot/usr/include/l4/
 	$(VERBOSE)$(CP) -Lr $(OBJ_DIR)/include/l4/{crtn,cxx,l4re_vfs,libc_backends,re,sys,util,bid_config.h} \
 	                    $(OBJ_DIR)/sysroot/usr/include/l4/
-	$(VERBOSE)$(CP) -Lr $(OBJ_DIR)/include/uclibc-ng/* $(OBJ_DIR)/sysroot/usr/include/
+	$(VERBOSE)$(CP) -Lr $(OBJ_DIR)/include/$(CONFIG_L4_LIBC)/* $(OBJ_DIR)/sysroot/usr/include/
 	$(VERBOSE)$(MAKE) S='$(addprefix pkg/l4re-core/,$(SYSROOT_LIB_DIRS))' LD_SCRIPTS='' install \
 	                    INSTALLDIR_LIB=$(OBJ_DIR)/sysroot/usr/lib INSTALLDIR_INC=$(OBJ_DIR)/sysroot/usr/include
 	$(VERBOSE)$(MAKE) S=pkg/l4re-core/libpthread/src TARGET=libpthread.a install \
 	                    INSTALLDIR_LIB=$(OBJ_DIR)/sysroot/usr/lib INSTALLDIR_INC=$(OBJ_DIR)/sysroot/usr/include
 	$(VERBOSE)mv $(OBJ_DIR)/sysroot/usr/lib/libc_nonshared.p.a  $(OBJ_DIR)/sysroot/usr/lib/libc_nonshared.a
-	$(VERBOSE)$(RM) $(OBJ_DIR)/sysroot/usr/lib/libc.so
-	$(VERBOSE)$(OUTPUT_FORMAT) > $(OBJ_DIR)/sysroot/usr/lib/libc.so
-	$(VERBOSE)echo "GROUP ( libc.so.1 libc_nonshared.a AS_NEEDED ( libld-l4.so.1 ) )" >> $(OBJ_DIR)/sysroot/usr/lib/libc.so
+	$(if $(filter uclibc-ng,$(CONFIG_L4_LIBC)),$(VERBOSE)$(RM) $(OBJ_DIR)/sysroot/usr/lib/libc.so)
+	$(if $(filter uclibc-ng,$(CONFIG_L4_LIBC)),$(VERBOSE)$(OUTPUT_FORMAT) > $(OBJ_DIR)/sysroot/usr/lib/libc.so)
+	$(if $(filter uclibc-ng,$(CONFIG_L4_LIBC)),$(VERBOSE)echo "GROUP ( libc.so.1 libc_nonshared.a AS_NEEDED ( libld-l4.so.1 ) )" >> $(OBJ_DIR)/sysroot/usr/lib/libc.so)
 
 
 endif # empty $(S)
